@@ -3,6 +3,7 @@ import platform
 import time
 import logging
 import random
+import math
 logger = logging.getLogger()
 
 import pygame
@@ -22,10 +23,12 @@ enemies = []
 last_enemy_spawn = 0
 ENEMY_SPAWN_COOLDOWN = 0.5  # seconds
 
-# List to store active projectiles [(x, y), ...]
+# List to store active projectiles [(x, y, dx, dy), ...]  # Added dx, dy for diagonal movement
 projectiles = []
 last_shot_time = 0
-SHOT_COOLDOWN = 0.3  # seconds
+last_scatter_time = 0
+SHOT_COOLDOWN = 0.25  # seconds
+SCATTER_COOLDOWN = 1.0  # seconds
 
 
 
@@ -35,11 +38,11 @@ def check_collision(x1, y1, x2, y2, radius1=5, radius2=10):
     return distance < (radius1 + radius2)
 
 def update():
-    global devil_x_pos, last_shot_time, projectiles, last_enemy_spawn
+    global devil_x_pos, last_shot_time, last_scatter_time, projectiles, last_enemy_spawn
     
-    keys = pygame.key.get_pressed()
     current_time = time.time()
-    
+    keys = pygame.key.get_pressed()
+
     # Spawn new enemy
     if current_time - last_enemy_spawn >= ENEMY_SPAWN_COOLDOWN:
         y_pos = random.randint(50, SCREEN_HEIGHT - 200)  # Random height, keeping some space at bottom
@@ -54,21 +57,31 @@ def update():
         enemies.append(new_enemy)
         last_enemy_spawn = current_time
     
-    # Move left with left arrow or A key
-    if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-        devil_x_pos -= 5
-    # Move right with right arrow or D key
-    if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-        devil_x_pos += 5
+    # Update player position based on mouse
+    mouse_x, _ = pygame.mouse.get_pos()
+    devil_x_pos = mouse_x
     
-    # Shoot projectile with space
+    # Shoot projectile with spacebar
     if keys[pygame.K_SPACE] and current_time - last_shot_time >= SHOT_COOLDOWN:
-        projectiles.append([devil_x_pos, devil_y_pos])
+        projectiles.append([devil_x_pos, devil_y_pos, 0, -9])  # Straight up
         last_shot_time = current_time
+    
+    # Scatter shot with B key
+    if keys[pygame.K_b] and current_time - last_scatter_time >= SCATTER_COOLDOWN:
+        num_projectiles = random.randint(4, 7)  # Random number of projectiles
+        speed = 9  # Uniform speed for all projectiles
+        for _ in range(num_projectiles):
+            angle = random.uniform(-45, 45)  # Random angle between -45 and 45 degrees
+            rad = math.radians(angle)
+            dx = math.sin(rad) * speed
+            dy = -math.cos(rad) * speed  # Negative because y increases downward
+            projectiles.append([devil_x_pos, devil_y_pos, dx, dy])
+        last_scatter_time = current_time
     
     # Update projectiles and check collisions
     for projectile in projectiles[:]:
-        projectile[1] -= 9  # Move projectile up
+        projectile[0] += projectile[2]  # Update x with dx
+        projectile[1] += projectile[3]  # Update y with dy
         
         # Check collision with each enemy
         for enemy in enemies[:]:
@@ -78,7 +91,7 @@ def update():
                 enemies.remove(enemy)
                 break
         
-        if projectile[1] < 0:  # Remove if off screen
+        if projectile[1] < 0 or projectile[0] < 0 or projectile[0] > SCREEN_WIDTH:  # Remove if off screen
             projectiles.remove(projectile)
     
     # Update enemy positions
@@ -100,7 +113,7 @@ def draw():
 
 
     # draw projectiles
-    for proj_x, proj_y in projectiles:
+    for proj_x, proj_y, _, _ in projectiles:
         pygame.draw.circle(SCREEN, (255, 0, 0), (int(proj_x), int(proj_y)), 5, 0)
 
     # draw enemies
@@ -115,6 +128,9 @@ def draw():
 def main():
     pygame.init()
     pygame.font.init()
+    
+    # Hide the cursor
+    pygame.mouse.set_visible(False)
 
     # Create a clock to control frame rate
     clock = pygame.time.Clock()
